@@ -106,7 +106,7 @@ class Play extends Command {
 		// Search for track
 		try {
 			res = await player.search(search, message.author);
-			if (res.loadType === 'LOAD_FAILED') {
+			if (res.loadType === 'error') {
 				if (!player.queue.current) player.destroy();
 				throw res.exception;
 			}
@@ -114,24 +114,24 @@ class Play extends Command {
 			return message.channel.error('music/play:ERROR', { ERROR: err.message });
 		}
 		// Workout what to do with the results
-		if (res.loadType == 'NO_MATCHES') {
+		if (res.loadType == 'empty') {
 			// An error occured or couldn't find the track
 			if (!player.queue.current) player.destroy();
 			return message.channel.error('music/play:NO_SONG');
 
-		} else if (res.loadType == 'PLAYLIST_LOADED') {
+		} else if (res.loadType == 'playlist') {
 			// Connect to voice channel if not already
 			if (player.state !== 'CONNECTED') player.connect();
 
 			// Show how many songs have been added
 			const embed = new Embed(bot, message.guild)
 				.setColor(message.member.displayHexColor)
-				.setDescription(message.translate('music/play:QUEUED', { NUM: res.tracks.length }));
+				.setDescription(message.translate('music/play:QUEUED', { NUM: res.playlist.tracks.length + 1 }));
 			message.channel.send({ embeds: [embed] });
 
 			// Add songs to queue and then pLay the song(s) if not already
-			player.queue.add(res.tracks);
-			if (!player.playing && !player.paused && player.queue.totalSize === res.tracks.length) player.play();
+			player.queue.add(res.playlist.tracks);
+			if (!player.playing && !player.paused && player.queue.totalSize === (res.playlist.tracks.length + 1)) player.play();
 		} else {
 			// add track to queue and play
 			if (player.state !== 'CONNECTED') player.connect();
@@ -249,6 +249,7 @@ class Play extends Command {
 				if (!player.playing && !player.paused && player.queue.size == 0) {
 					try {
 						await player.play();
+						return interaction.followUp({ embeds: [channel.success('music/play:QUEUE', {}, true)] });
 					} catch (err) {
 						bot.logger.error(`Command: '${this.help.name}' has error: ${err.message}.`);
 						return interaction.followUp({ ephemeral: true, embeds: [channel.error('music/play:ERROR', { ERROR: err.message }, true)] });
