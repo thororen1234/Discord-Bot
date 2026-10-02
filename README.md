@@ -6,7 +6,6 @@
 
 <h3 align=center>A fully customizable bot built with <a href=https://github.com/discordjs/discord.js>discord.js</a></h3>
 
-
 <div align=center>
 
  [![Discord](https://img.shields.io/discord/658113349384667198.svg?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/8g6zUQu)
@@ -39,59 +38,56 @@ If you liked this repository, feel free to leave a star ⭐ to help promote Eggl
 
 **140+** commands and counting across **13** different categories!
 
-*   🎉  **Fun**: `advice`, `fact`, `meme`, `reminder`, `pokemon` and **6** more!
-*   🎁  **Giveaway**: `g-start`, `g-reroll`, `g-edit` and `g-delete` and **2** more!
-*   💬  **Guild**: `avatar`, `giveaway`, `server-info`, `poll`, and **6** more!
-*   👑  **Host**: `reload`, `shutdown`, `addban`, `eval` and **10** more!
-*   🖼  **Image**: `blurpify`, `changemymind`, `phcomment`, `stickbug`, `whowouldwin`, `threats`, and **10** more!
-*   💰  **Level**: `leaderboard`, `rank`!
-*   ❔  **Misc**: `about`, `help`, `status`, `uptime`!
-*   🚓  **Moderation**: `ban`, `clear`, `kick`, `warn`, `report`, `unmute` and **16** more!
-*   🎵  **Music**: `play`, `queue`, `shuffle`, `seek`, `lyrics` and **29** more!
-*   🔞  **NSFW**: Total of **18** commands!
+* 🎉  **Fun**: `advice`, `fact`, `meme`, `reminder`, `pokemon` and **6** more!
+* 🎁  **Giveaway**: `g-start`, `g-reroll`, `g-edit` and `g-delete` and **2** more!
+* 💬  **Guild**: `avatar`, `giveaway`, `server-info`, `poll`, and **6** more!
+* 👑  **Host**: `reload`, `shutdown`, `addban`, `eval` and **10** more!
+* 🖼  **Image**: `blurpify`, `changemymind`, `phcomment`, `stickbug`, `whowouldwin`, `threats`, and **10** more!
+* 💰  **Level**: `leaderboard`, `rank`!
+* ❔  **Misc**: `about`, `help`, `status`, `uptime`!
+* 🚓  **Moderation**: `ban`, `clear`, `kick`, `warn`, `report`, `unmute` and **16** more!
+* 🎵  **Music**: `play`, `queue`, `shuffle`, `seek`, `lyrics` and **29** more!
+* 🔞  **NSFW**: Total of **18** commands!
 * **Plugins**: `reaction roles`, `settings language`, `settings logs` and **4** more!
-*   🔎  **Searcher**: `fortnite`, `weather`, `twitch`, `steam` and **3** more!
+* 🔎  **Searcher**: `fortnite`, `weather`, `twitch`, `steam` and **3** more!
 * **Tag**: `Tag system`!
-*   ❓  **Ticket**: `t-(close | create |setup )`!
-*   **Full list** of commands: [here](https://github.com/Spiderjockey02/Discord-Bot/blob/master/docs/COMMANDS.md).
+* ❓  **Ticket**: `t-(close | create |setup )`!
+* **Full list** of commands: [here](https://github.com/Spiderjockey02/Discord-Bot/blob/master/docs/COMMANDS.md).
 
 Egglord also comes packed with a variety of features, such as:
 
-  * **Welcome messages** and **farewell messages**.
-  * **Extensive Logging** for 37 events.
-  * **Slash Commands**
-  * **Advanced** auto-moderation.
-  * **Audio filters** for music plugin.
-  * **Custom** playlist support.
-  * **Multi-language support**.
-  * **Giveaways**
-  * **Reaction roles**
-  * And much more! There are over **40+** settings to tweak!
-
+* **Welcome messages** and **farewell messages**.
+* **Extensive Logging** for 37 events.
+* **Slash Commands**
+* **Advanced** auto-moderation.
+* **Audio filters** for music plugin.
+* **Custom** playlist support.
+* **Multi-language support**.
+* **Giveaways**
+* **Reaction roles**
+* And much more! There are over **40+** settings to tweak!
 
 ## 📝 To-Do
 
 Egglord is pretty much at the end of development now, it will only be updated for the following things:
 
-  * Bug fixes
-  * Code optimisation
-  * New discord features
-  * Suggestions I deem very good.
+* Bug fixes
+* Code optimisation
+* New discord features
+* Suggestions I deem very good.
 
 ## 🖥️ My other projects
- * [Auto poster](https://github.com/Spiderjockey02/auto-poster-and-notifications) - Allows your users to get notified when you post on another social media. (Youtube, twitch, twitter, reddit etc)
- * [erela.js-facebook](https://github.com/Spiderjockey02/erela.js-facebook) - Allows facebook videos to played with [erela.js](https://github.com/MenuDocs/erela.js) (A [lavalink](https://github.com/Freyacodes/Lavalink) client).
+
+* [Auto poster](https://github.com/Spiderjockey02/auto-poster-and-notifications) - Allows your users to get notified when you post on another social media. (Youtube, twitch, twitter, reddit etc)
 
 ## 📖 License
 
 Released under the [Apache License 2.0](https://github.com/Spiderjockey02/Discord-Bot/blob/master/LICENSE) license.
 
 ## 📜 Credits
+
 * **[tovade](https://github.com/tovade)** - Initial Reaction Role System.
 * **[josh_0242](https://github.com/ChaosArising)** - Slash Commands & Tags System.
-* **[duncte123#1245](https://github.com/duncte123)** - [Lavalink plugin](https://github.com/DuncteBot/skybot-lavalink-plugin) (TTS, reddit, TikTok, Phub, Mixcloud etc).
-* **[topi314](https://github.com/topi314)** - [Lavalink plugin 2](https://github.com/topi314/LavaSrc) (Spotify, Apple Music, Deezer & Yandex)
-* **[topi314](https://github.com/topi314)** - [Lavalink plugin 3](https://github.com/topi314/LavaSearch) (Search module for LavaSrc)
-* **[thororen](https://github.com/thororen1234)** - Updated Music system to support new Lavalink v4.
+* **[thororen](https://github.com/thororen1234)** - Migrated the music system from Lavalink to native Discord voice playback with yt-dlp and FFmpeg.
 * **[Our translators](https://crowdin.com/project/egglord-discord-bot)** - Everyone over at Crowdin who helps make this bot multilingual.
 * Want to be on this list, aswell? - Check out the [Contributing page](https://github.com/Spiderjockey02/Discord-Bot/blob/master/docs/CONTRIBUTING.md).

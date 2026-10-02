@@ -56,7 +56,7 @@ class Pitch extends Command {
 		}
 
 		if (isNaN(message.args[0])) return message.channel.send(message.translate('music/pitch:INVALID'));
-		if (message.args[0] < 0 || message.args[0] > 10) return message.channel.send(message.translate('music/pitch:INCORRECT'));
+		if (message.args[0] <= 0 || message.args[0] > 10) return message.channel.send(message.translate('music/pitch:INCORRECT'));
 
 		player.setFilter({
 			timescale: { pitch: message.args[0] },
@@ -95,6 +95,9 @@ class Pitch extends Command {
 			await bot.delay(5000);
 			return interaction.editReply({ content: '​​ ', embeds: [embed] });
 		} else {
+			if (isNaN(amount) || amount <= 0 || amount > 10) {
+				return interaction.reply({ embeds: [channel.error('music/pitch:INCORRECT', {}, true)], ephemeral: true });
+			}
 			player.setFilter({
 				timescale: { pitch: amount },
 			});

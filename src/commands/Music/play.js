@@ -131,7 +131,7 @@ class Play extends Command {
 
 			// Add songs to queue and then pLay the song(s) if not already
 			player.queue.add(res.playlist.tracks);
-			if (!player.playing && !player.paused && player.queue.totalSize === (res.playlist.tracks.length + 1)) player.play();
+			if (!player.playing && !player.paused) player.play();
 		} else {
 			// add track to queue and play
 			if (player.state !== 'CONNECTED') player.connect();
@@ -229,7 +229,7 @@ class Play extends Command {
 						player.queue.add(res.playlist.tracks);
 				}
 
-				if (!player.playing && !player.paused && player.queue.totalSize === (res.playlist.tracks.length + 1)) player.play();
+				if (!player.playing && !player.paused) player.play();
 				return interaction.followUp({ embeds: [new Embed(bot, guild)
 					.setColor(member.displayHexColor)
 					.setDescription(bot.translate('music/play:QUEUED', { NUM: res.playlist.tracks.length + 1 }))] });

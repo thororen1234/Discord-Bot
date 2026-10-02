@@ -1,0 +1,9 @@
+allowBuilds:
+  bufferutil: set this to true or false
+  canvacord: set this to true or false
+  erlpack@https://codeload.github.com/discord/erlpack/tar.gz/2a4c0e832f3cd4e07c92d4baec326a631ed50f59: set this to true or false
+  ffmpeg-static: set this to true or false
+  puppeteer: set this to true or false
+  utf-8-validate: set this to true or false
+  youtube-dl-exec: set this to true or false
+  zlib-sync: set this to true or false

@@ -125,7 +125,7 @@ module.exports = (bot) => {
 
 					// Add songs to queue and then pLay the song(s) if not already
 					player.queue.add(data.tracks);
-					if (!player.playing && !player.paused && player.queue.totalSize === data.tracks.length) player.play();
+					if (!player.playing && !player.paused) player.play();
 					res.status(200).json({ success: `Added ${data.tracks.length} songs to the queue.` });
 					break;
 				default:

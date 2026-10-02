@@ -9,8 +9,8 @@ Want to host the bot yourself, if not [invite him](https://discord.com/oauth2/au
 >Support will only be given on errors done by the base source code. (No edits to the code.)
 
 ### Setting up server
-* The system you are using to host on must have a minimum version [Node.js](https://nodejs.org/en/) 14. (It will not run at all if less).
-* If you are hosting the lavalink aswell on the same system, it will need [Java](https://adoptopenjdk.net/) v11+ (v13 is preferred) and if not on the same system you will need to get the IP and port of the server. (This may require editing of application.yml)
+* The system you are using to host on must have [Node.js](https://nodejs.org/en/) 18 or later.
+* Music playback uses native Discord voice, yt-dlp and the bundled FFmpeg binary. Java and a separate audio server are not required.
 * (Optional) You can also host the [mongo](https://www.mongodb.com/) database on your system but this is optional.
 
 ### Setting up the database
@@ -37,7 +37,7 @@ Find the file `src/config.example.js`, this is where all your information will g
 
 ### Editing bot settings
 * For editing guild settings: `src/database/models/GuildSettings.js`.
-* For entering Lavalink server information (host, port, password): `src/base/Audio-Manager#14`. As nodes is an array you can multiply lavalink servers connected to the same bot, this helps with ratelimiting.
+* Music playback has no server configuration. yt-dlp is installed with the bot and resolves supported audio sources locally.
 
 ### Editing the files
 * Want to create your own commands?
@@ -46,10 +46,8 @@ Find the file `src/config.example.js`, this is where all your information will g
     * You will need to add the category name to the guild's setting's plugins array. (You will need to update all guilds with this new change)
 
 
-### Running the bot + Lavalink
-> Run the lavalink first as lavalink can take longer to load than the bot.
-* For running the lavalink, use the command: `java -jar Lavalink.jar`
-* For running the bot, go to the main directory (same directory as package.json) and run command:
+### Running the bot
+* Go to the main directory (same directory as package.json) and run:
 ```sh
 node .    
 ```

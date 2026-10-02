@@ -36,9 +36,23 @@ const config = {
 		secure: true,
 		token: '123456789',
 	},
-	LavalinkNodes: [
-		{ host: 'localhost', port: 5000, password: 'youshallnotpass' },
-	],
+	// Native music-player providers. Leave disabledProviders empty to enable all.
+	Music: {
+		disabledProviders: [],
+		// Used by `play ftts://Your%20text` (https://flowery.pw/docs).
+		floweryTts: {
+			apiUrl: 'https://api.flowery.pw/v1/tts',
+			voice: '',
+			translate: false,
+			silence: 0,
+			speed: 1,
+			audioFormat: 'mp3',
+		},
+		// Used by the `tts` command and `play speak:Your text`.
+		speechTts: {
+			language: 'en-AU',
+		},
+	},
 	// URL to mongodb
 	MongoDBURl: 'mongodb://link',
 	// embed colour

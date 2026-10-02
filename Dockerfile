@@ -1,15 +1,16 @@
-FROM node:16.13.2
+FROM node:lts-slim
 
-# Create the directory!
-RUN mkdir -p /usr/src/bot
 WORKDIR /usr/src/bot
 
-# Copy and Install our bot
-COPY package.json ./
-RUN npm install && npm cache clean --force
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
 
-# Our precious bot
-COPY . /usr/src/bot
+RUN corepack enable
 
-# Start me!
-CMD ["node", "src/index.js"]
+COPY package.json pnpm-lock.yaml ./
+
+RUN pnpm install --prod --frozen-lockfile
+
+COPY . .
+
+CMD ["pnpm", "start"]

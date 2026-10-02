@@ -21,15 +21,15 @@ class Speed extends Command {
 			description: 'Sets the player\'s playback speed.',
 			usage: 'speed <Number>',
 			cooldown: 3000,
-			examples: ['speed 4'],
+			examples: ['speed 1.5'],
 			slash: false,
 			isSubCmd: true,
 			options: [{
 				name: 'speed',
 				description: 'The speed at what you want the song to go.',
-				type: ApplicationCommandOptionType.Integer,
-				minValue: 0,
-				maxValue: 10,
+				type: ApplicationCommandOptionType.Number,
+				minValue: 0.5,
+				maxValue: 2,
 				required: true,
 			}],
 		});
@@ -51,7 +51,7 @@ class Speed extends Command {
 		if (!player.queue.current.isSeekable) return message.channel.error('music/speed:LIVESTREAM');
 
 		// Make sure Number is a number
-		if (isNaN(message.args[0]) || message.args[0] < 0 || message.args[0] > 10) return message.channel.error('music/speed:INVALID');
+		if (isNaN(message.args[0]) || message.args[0] < 0.5 || message.args[0] > 2) return message.channel.error('music/speed:INVALID');
 
 		// Change speed value
 		try {
@@ -89,6 +89,7 @@ class Speed extends Command {
 
 		// Make sure song isn't a stream
 		if (!player.queue.current.isSeekable) return interaction.reply({ ephemeral: true, embeds: [channel.error('music/speed:LIVESTREAM', { ERROR: null }, true)] });
+		if (isNaN(speed) || speed < 0.5 || speed > 2) return interaction.reply({ ephemeral: true, embeds: [channel.error('music/speed:INVALID', { ERROR: null }, true)] });
 
 		// Change speed value
 		try {

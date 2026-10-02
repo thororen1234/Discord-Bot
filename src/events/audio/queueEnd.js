@@ -57,7 +57,7 @@ class QueueEnd extends Event {
 
 					// Add songs to queue and then pLay the song(s) if not already
 					player.queue.add(res.tracks);
-					if (!player.playing && !player.paused && player.queue.totalSize === res.tracks.length) player.play();
+					if (!player.playing && !player.paused) player.play();
 					break;
 				}
 				default:

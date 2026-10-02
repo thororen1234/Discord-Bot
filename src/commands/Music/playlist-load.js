@@ -1,7 +1,7 @@
 // Dependencies
 const	{ Embed } = require('../../utils'),
 	{ PlaylistSchema } = require('../../database/models'),
-	{ TrackUtils } = require('magmastream'),
+	AudioManager = require('../../base/Audio-Manager'),
 	{ ApplicationCommandOptionType, PermissionsBitField: { Flags } } = require('discord.js'),
 	Command = require('../../structures/Command.js');
 
@@ -148,7 +148,7 @@ class PLoad extends Command {
 			// eslint-disable-next-line no-async-promise-executor
 			await new Promise(async function(resolve) {
 				for (let i = 0; i < playlist.songs.length; i++) {
-					player.queue.add(TrackUtils.buildUnresolved({
+					player.queue.add(AudioManager.buildUnresolved({
 						title: playlist.songs[i].title,
 						author: playlist.songs[i].author,
 						duration: playlist.songs[i].duration,

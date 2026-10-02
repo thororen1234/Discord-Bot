@@ -213,7 +213,7 @@ class Radio extends Command {
 
 			// Add songs to queue and then play the song(s) if not already
 			player.queue.add(res.tracks);
-			if (!player.playing && !player.paused && player.queue.totalSize === res.tracks.length) player.play();
+			if (!player.playing && !player.paused) player.play();
 
 			return interaction.reply({ embeds: [embed] });
 		} else {
