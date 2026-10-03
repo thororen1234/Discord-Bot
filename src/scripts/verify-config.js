@@ -62,6 +62,15 @@ async function validateConfig(config) {
 		}
 	}
 
+	// Music playback needs the binaries that ffmpeg-static and youtube-dl-exec download when installed
+	const ffmpegPath = require('ffmpeg-static'),
+		{ YOUTUBE_DL_PATH } = require('youtube-dl-exec/src/constants');
+	for (const [name, binary] of [['FFmpeg', ffmpegPath], ['yt-dlp', YOUTUBE_DL_PATH]]) {
+		if (!binary || !require('fs').existsSync(binary)) {
+			logger.error(`${chalk.red('✗')} ${name} binary is missing, music will not play. Reinstall dependencies with their install scripts allowed (see pnpm-workspace.yaml).`);
+		}
+	}
+
 	// Check support server set up
 	if (!config.SupportServer) {
 		logger.error(`${chalk.red('✗')} Support server setup is missing.`);

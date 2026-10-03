@@ -148,11 +148,7 @@ class PLoad extends Command {
 			// eslint-disable-next-line no-async-promise-executor
 			await new Promise(async function(resolve) {
 				for (let i = 0; i < playlist.songs.length; i++) {
-					player.queue.add(AudioManager.buildUnresolved({
-						title: playlist.songs[i].title,
-						author: playlist.songs[i].author,
-						duration: playlist.songs[i].duration,
-					}, member.user));
+					player.queue.add(AudioManager.buildUnresolved(playlist.songs[i], member.user));
 					if (!player.playing && !player.paused && !player.queue.length) player.play();
 					if (i == playlist.songs.length - 1) resolve();
 				}

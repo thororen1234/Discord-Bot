@@ -37,7 +37,14 @@ Find the file `src/config.example.js`, this is where all your information will g
 
 ### Editing bot settings
 * For editing guild settings: `src/database/models/GuildSettings.js`.
-* Music playback has no server configuration. yt-dlp is installed with the bot and resolves supported audio sources locally.
+* Music playback needs no audio server. yt-dlp and FFmpeg are installed with the bot (their install scripts must be allowed, see `pnpm-workspace.yaml`) and resolve audio locally.
+* Optional music settings live under `Music` in `src/config.js`:
+    * `youtube`: a PO token or cookies, if YouTube asks the bot to "sign in to confirm you're not a bot".
+    * `spotify`: Spotify API credentials, for Spotify tracks, albums, playlists and artists (played from YouTube).
+    * `songlink`: a self-hosted [SongLink API](https://github.com/thororen1234/SongLinkAPI), for exact matches of Spotify, Apple Music, Deezer and Tidal links.
+    * `tidal`: a [TidalSubsonic](https://github.com/vMohammad24/TidalSubsonic) server, to play Tidal links and searches from Tidal.
+    * `defaultSource`, `disabledProviders`, `maxPlaylistSize`, `uploads`, `floweryTts` and `speechTts`.
+* Deezer and Apple Music links, SoundCloud, direct audio links, file uploads and the other sites yt-dlp supports work without any extra setup.
 
 ### Editing the files
 * Want to create your own commands?

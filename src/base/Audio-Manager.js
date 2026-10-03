@@ -15,6 +15,11 @@ const {
 } = require('@discordjs/voice');
 const ffmpegPath = require('ffmpeg-static');
 const youtubedl = require('youtube-dl-exec');
+const { Deezer, AppleMusic } = require('./music/Catalogs');
+const SongLink = require('./music/SongLink');
+const Spotify = require('./music/Spotify');
+const Tidal = require('./music/Tidal');
+const { normalizeTitle, isExactTrackMatch } = require('./music/TrackMatch');
 
 class Queue extends Array {
 	constructor() {
@@ -49,6 +54,28 @@ class Queue extends Array {
 
 const isUrl = value => /^https?:\/\//i.test(value);
 const number = value => Number.isFinite(Number(value)) ? Number(value) : 0;
+const RESOLVED_TTL = 30 * 60 * 1000;
+const MEDIA_EXTENSIONS = new Set(['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac', '.wma', '.opus', '.webm', '.mp4', '.mkv', '.avi', '.mov']);
+
+function hostMatches(value, pattern) {
+	try {
+		return /^https?:$/.test(new URL(value).protocol) && pattern.test(new URL(value).hostname.toLowerCase());
+	} catch {
+		return false;
+	}
+}
+
+const isYouTubeUrl = value => hostMatches(value, /(^|\.)(youtube\.com|youtu\.be|youtube-nocookie\.com)$/);
+const isSoundCloudUrl = value => hostMatches(value, /(^|\.)soundcloud\.com$|^on\.soundcloud\.com$/);
+
+function isDirectMediaUrl(value) {
+	try {
+		const url = new URL(value);
+		return /^https?:$/.test(url.protocol) && MEDIA_EXTENSIONS.has(path.extname(url.pathname).toLowerCase());
+	} catch {
+		return false;
+	}
+}
 
 const EXTERNAL_SOURCES = [
 	{ id: 'yandex', label: 'Yandex Music', hosts: [/(^|\.)music\.yandex\.(ru|com|kz|by|ua)$/] },
@@ -76,7 +103,14 @@ const providerNames = {
 	jiosaavn: 'JioSaavn',
 	ocremix: 'OC Remix',
 	soundgasm: 'Soundgasm',
-	appmusic: 'Apple Music',
+	applemusic: 'Apple Music',
+	deezer: 'Deezer',
+	direct: 'Direct links',
+	soundcloud: 'SoundCloud',
+	spotify: 'Spotify',
+	tidal: 'Tidal',
+	youtube: 'YouTube',
+	http: 'Other links',
 };
 
 function getExternalSource(input) {
@@ -196,7 +230,13 @@ class Player {
 		return this;
 	}
 
-	async search(query, requester) {
+	/**
+	 * Resolves a query, link or attachment into tracks.
+	 * @param {string|object} query The search text, link, or { source, ... } object for TTS/uploads
+	 * @param {User} requester Who asked for the track(s)
+	 * @param {string} [source] Where plain-text searches play from: youtube, soundcloud or tidal
+	*/
+	async search(query, requester, source) {
 		try {
 			if (typeof query === 'object') {
 				if (query.source === 'speak') return this._searchSpeech(query.query, requester);
@@ -208,33 +248,18 @@ class Player {
 			if (/^(?:ftts:\/\/|tts:)/i.test(value)) return this._searchFloweryTTS(value, requester);
 			if (/^speak:/i.test(value)) return this._searchSpeech(value.replace(/^speak:/i, ''), requester);
 			if (this._isStreamDeckAudio(value)) return this._searchStreamDeck(value, requester);
+			if (isYouTubeUrl(value)) return await this._searchYouTube(value, requester);
+
+			const linkProvider = SongLink.getProviderId(value);
+			if (linkProvider) return await this._searchMusicService(value, linkProvider, requester, source);
+			if (isSoundCloudUrl(value)) return await this._searchSoundCloud(value, requester);
 
 			const externalSource = getExternalSource(value);
-			if (externalSource) return this._searchExternal(value, externalSource, requester);
+			if (externalSource) return await this._searchExternal(value, externalSource, requester);
+			if (isDirectMediaUrl(value)) return this._searchDirect(value, requester);
+			if (isUrl(value)) return await this._searchLink(value, requester);
 
-			const url = isUrl(value);
-			const info = await youtubedl(url ? value : `ytsearch1:${value}`, {
-				dumpSingleJson: true,
-				skipDownload: true,
-				noWarnings: true,
-				noCallHome: true,
-				playlistEnd: 100,
-			});
-			const entries = (info.entries || []).filter(Boolean);
-
-			if (!url && entries[0]) {
-				return { loadType: 'search', tracks: [this._track(entries[0], requester)] };
-			}
-			if (entries.length) {
-				const tracks = entries.map(entry => this._track(entry, requester));
-				return {
-					loadType: 'playlist',
-					playlist: { name: info.title, tracks },
-					tracks,
-				};
-			}
-			if (info?.title) return { loadType: 'search', tracks: [this._track(info, requester)] };
-			return { loadType: 'empty', tracks: [] };
+			return await this._searchText(value, requester, source);
 		} catch (exception) {
 			return { loadType: 'error', exception, tracks: [] };
 		}
@@ -242,6 +267,265 @@ class Player {
 
 	get musicConfig() {
 		return this.manager.bot.config?.Music || {};
+	}
+
+	get maxPlaylistSize() {
+		return Math.max(1, number(this.musicConfig.maxPlaylistSize) || 100);
+	}
+
+	// Common yt-dlp options, including YouTube authentication (PO token > browser cookies > cookie file)
+	_ytdlOptions(extra = {}) {
+		const config = this.musicConfig.youtube || {};
+		const options = {
+			// Only use this config, not a yt-dlp config file that happens to be on the host
+			ignoreConfig: true,
+			noCheckCertificates: true,
+			noWarnings: true,
+			// yt-dlp needs a JavaScript runtime to solve YouTube's player challenges
+			jsRuntimes: `node:${process.execPath}`,
+			...extra,
+		};
+
+		if (config.poToken) {
+			// Tokens are given as CLIENT.CONTEXT+TOKEN, a bare token is a web streaming (GVS) token
+			const token = config.poToken.includes('+') ? config.poToken : `web.gvs+${config.poToken}`;
+			options.extractorArgs = `youtube:po_token=${token}`;
+		} else if (config.cookiesFromBrowser) {
+			options.cookiesFromBrowser = config.cookiesFromBrowser;
+		} else if (config.cookiesFile) {
+			options.cookies = config.cookiesFile;
+		}
+		return options;
+	}
+
+	_result({ name, tracks }, requester) {
+		for (const track of tracks) track.requester = requester;
+		if (!tracks.length) return { loadType: 'empty', tracks };
+		return name
+			? { loadType: 'playlist', playlist: { name, tracks }, tracks }
+			: { loadType: 'search', tracks };
+	}
+
+	_thumbnail(info) {
+		return info.thumbnail || info.thumbnails?.[info.thumbnails.length - 1]?.url || null;
+	}
+
+	// YouTube videos and playlists. Playlists are read flat, so each entry's stream is only resolved when it plays.
+	async _searchYouTube(url, requester) {
+		this._assertProviderEnabled('youtube');
+		const info = await youtubedl(url, this._ytdlOptions({
+			dumpSingleJson: true,
+			skipDownload: true,
+			flatPlaylist: true,
+			playlistEnd: this.maxPlaylistSize,
+		}));
+		const entries = (info?.entries || []).filter(entry => entry && (entry.id || entry.url));
+		if (entries.length) {
+			const tracks = entries.map(entry => this._track(entry, requester, { provider: 'youtube' }));
+			return { loadType: 'playlist', playlist: { name: info.title, tracks }, tracks };
+		}
+		return info?.title
+			? { loadType: 'search', tracks: [this._track(info, requester, { provider: 'youtube' })] }
+			: { loadType: 'empty', tracks: [] };
+	}
+
+	// Any other link yt-dlp has an extractor for (Bandcamp, Vimeo, Twitch, ...)
+	async _searchLink(url, requester) {
+		this._assertProviderEnabled('http');
+		const info = await youtubedl(url, this._ytdlOptions({
+			dumpSingleJson: true,
+			skipDownload: true,
+			playlistEnd: this.maxPlaylistSize,
+		}));
+		const entries = (info?.entries || []).filter(Boolean);
+		const tracks = (entries.length ? entries : (info?.title ? [info] : [])).map(entry => this._track(entry, requester, {
+			provider: 'http',
+		}));
+		return entries.length
+			? { loadType: 'playlist', playlist: { name: info.title, tracks }, tracks }
+			: { loadType: tracks.length ? 'search' : 'empty', tracks };
+	}
+
+	// Plain-text search. Tidal and SoundCloud only answer with a good match, otherwise YouTube is used.
+	async _searchText(query, requester, source) {
+		const from = String(source || this.musicConfig.defaultSource || 'youtube').toLowerCase();
+
+		if (from === 'tidal' && this.manager.tidal.configured && this._isProviderEnabled('tidal')) {
+			try {
+				const match = await this.manager.tidal.findExact(query);
+				if (match) return this._result({ tracks: [match] }, requester);
+			} catch (err) {
+				this._debug(err.message);
+			}
+		}
+
+		if (from === 'soundcloud' && this._isProviderEnabled('soundcloud')) {
+			try {
+				const results = await youtubedl(`scsearch5:${query}`, this._ytdlOptions({ dumpSingleJson: true, flatPlaylist: true }));
+				const track = (results?.entries || [])
+					.map(entry => this._soundCloudTrack(entry, requester))
+					.find(result => !result.preview);
+				if (track) return { loadType: 'search', tracks: [track] };
+			} catch (err) {
+				this._debug(err.message);
+			}
+		}
+
+		this._assertProviderEnabled('youtube');
+		const results = await youtubedl(`ytsearch1:${query}`, this._ytdlOptions({ dumpSingleJson: true, flatPlaylist: true }));
+		const entry = (results?.entries || []).find(Boolean);
+		return entry
+			? { loadType: 'search', tracks: [this._track(entry, requester, { provider: 'youtube' })] }
+			: { loadType: 'empty', tracks: [] };
+	}
+
+	async _searchSoundCloud(url, requester) {
+		this._assertProviderEnabled('soundcloud');
+		const info = await youtubedl(url, this._ytdlOptions({
+			dumpSingleJson: true,
+			skipDownload: true,
+			playlistEnd: this.maxPlaylistSize,
+		}));
+		const entries = (info?.entries || []).filter(Boolean);
+		const tracks = (entries.length ? entries : (info ? [info] : [])).map(entry => this._soundCloudTrack(entry, requester));
+		return entries.length
+			? { loadType: 'playlist', playlist: { name: info.title, tracks }, tracks }
+			: { loadType: tracks.length ? 'search' : 'empty', tracks };
+	}
+
+	// SoundCloud only serves 30 second previews of some label tracks, so those play the full song from YouTube
+	_soundCloudTrack(info, requester) {
+		const formats = info.formats || [];
+		const preview = formats.length
+			? formats.every(format => /preview/.test(format.format_id || ''))
+			: number(info.duration) > 0 && number(info.duration) <= 30;
+		const uri = info.webpage_url || info.url;
+		const track = this._track(info, requester, {
+			provider: 'soundcloud',
+			preview,
+			getStream: preview ? undefined : () => this._getExternalInput(uri),
+		});
+		if (preview) {
+			track.duration = 0;
+			track.query = `${track.title} ${track.author}`;
+		}
+		return track;
+	}
+
+	_searchDirect(url, requester) {
+		this._assertProviderEnabled('direct');
+		const { hostname, pathname } = new URL(url);
+		let filename = path.basename(pathname);
+		try {
+			filename = decodeURIComponent(filename);
+		} catch {
+			// Keep the raw name when it isn't valid percent-encoding
+		}
+		return {
+			loadType: 'search',
+			tracks: [this._directTrack({
+				title: path.parse(filename).name || filename,
+				author: hostname,
+				uri: url,
+				identifier: crypto.createHash('sha256').update(url).digest('hex'),
+				provider: 'direct',
+			}, requester)],
+		};
+	}
+
+	async _searchMusicService(url, provider, requester, source) {
+		this._assertProviderEnabled(provider);
+		const { tidal, spotify, songlink } = this.manager;
+		const limit = this.maxPlaylistSize;
+
+		if (provider === 'tidal' && tidal.configured && Tidal.parseURL(url)) {
+			try {
+				const result = await tidal.getFromURL(url, limit);
+				if (result.tracks.length) return this._result(result, requester);
+			} catch (err) {
+				this._debug(err.message);
+			}
+		}
+
+		// SongLink only matches single songs, so Spotify albums, playlists and artists need the Spotify API
+		const spotifyRef = provider === 'spotify' ? Spotify.parseURL(url) : null;
+		if (spotifyRef && spotifyRef.type !== 'track') {
+			if (!spotify.configured) throw new Error('Spotify albums, playlists and artists need Spotify API credentials in the bot\'s config.');
+			return this._result(await spotify.getFromURL(url, limit), requester);
+		}
+
+		let lookupError;
+		if (songlink.configured) {
+			try {
+				const song = await songlink.lookup(url);
+				const result = await this._fromSongLink(song, url, source, requester);
+				if (result) return result;
+			} catch (err) {
+				lookupError = err;
+			}
+		}
+
+		// Without SongLink, read the metadata from the service itself and find the songs on YouTube
+		if (spotifyRef && spotify.configured) return this._result(await spotify.getFromURL(url, limit), requester);
+		if (provider === 'deezer') return this._result(await Deezer.getFromURL(url, limit), requester);
+		if (provider === 'applemusic') return this._result(await AppleMusic.getFromURL(url, limit), requester);
+		const needs = provider === 'tidal' ? 'a Tidal (TidalSubsonic) server' : 'Spotify API credentials';
+		throw lookupError || new Error(`${providerNames[provider]} links need ${needs} or a SongLink API in the bot's config.`);
+	}
+
+	async _fromSongLink(song, url, source, requester) {
+		const { tidal } = this.manager;
+		if (source === 'tidal' || SongLink.getProviderId(url) === 'tidal') {
+			if (tidal.configured && this._isProviderEnabled('tidal') && Tidal.parseURL(song.tidalUrl)) {
+				try {
+					const result = await tidal.getFromURL(song.tidalUrl, this.maxPlaylistSize);
+					// Only trust the Tidal match when it is exactly the requested song/album
+					const exact = !song.title || (song.type === 'album'
+						? normalizeTitle(song.title) === normalizeTitle(result.tracks[0]?.album)
+						: result.tracks[0] && isExactTrackMatch(song, result.tracks[0]));
+					if (result.tracks.length && exact) return this._result(result, requester);
+				} catch (err) {
+					this._debug(err.message);
+				}
+			}
+		}
+
+		this._assertProviderEnabled('youtube');
+		if (song.youtubeUrl) {
+			const result = await this._searchYouTube(song.youtubeUrl, requester);
+			// Play the YouTube audio, but keep the clean metadata from the source service
+			if (result.loadType === 'search') {
+				Object.assign(result.tracks[0], {
+					title: song.title || result.tracks[0].title,
+					author: song.author || result.tracks[0].author,
+					thumbnail: song.thumbnail || result.tracks[0].thumbnail,
+					sourceUri: url,
+				});
+			}
+			if (result.tracks.length) return result;
+		}
+
+		if (song.type === 'album') throw new Error('SongLink couldn\'t find this album on YouTube.');
+		if (!song.title) return null;
+
+		// No direct YouTube link - find the song on YouTube when it starts playing
+		return this._result({
+			tracks: [{
+				title: song.title,
+				author: song.author || 'Unknown artist',
+				duration: 0,
+				uri: url,
+				identifier: url,
+				thumbnail: song.thumbnail,
+				isSeekable: true,
+				provider: SongLink.getProviderId(url),
+				query: [song.title, song.author].filter(Boolean).join(' '),
+			}],
+		}, requester);
+	}
+
+	_debug(message) {
+		if (this.manager.bot.config?.debug) this.manager.bot.logger.debug(`Music: ${message}`);
 	}
 
 	_isProviderEnabled(provider) {
@@ -335,8 +619,7 @@ class Player {
 
 		const extension = path.extname(attachment.name).toLowerCase();
 		const mediaType = attachment.contentType || '';
-		const extensions = new Set(['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac', '.wma', '.opus', '.webm', '.mp4', '.mkv', '.avi', '.mov']);
-		if (!extensions.has(extension) && !/^(audio|video)\//i.test(mediaType)) {
+		if (!MEDIA_EXTENSIONS.has(extension) && !/^(audio|video)\//i.test(mediaType)) {
 			throw new Error('Unsupported upload type. Attach an audio or video file.');
 		}
 
@@ -392,13 +675,11 @@ class Player {
 		const input = source.id === 'ocremix' && /^OCR\d+$/i.test(value)
 			? `https://ocremix.org/remix/${value.toUpperCase()}`
 			: (source.id === 'pornhub' && /^phsearch:/i.test(value) ? `phsearch1:${value.slice(9).trim()}` : value);
-		const info = await youtubedl(input, {
+		const info = await youtubedl(input, this._ytdlOptions({
 			dumpSingleJson: true,
 			skipDownload: true,
-			noCheckCertificates: true,
-			noWarnings: true,
-			playlistEnd: 100,
-		});
+			playlistEnd: this.maxPlaylistSize,
+		}));
 		const entries = (info.entries || []).filter(Boolean);
 		const tracks = (entries.length ? entries : (info ? [info] : [])).map(entry => this._track(entry, requester, {
 			provider: source.id,
@@ -423,25 +704,22 @@ class Player {
 	}
 
 	async _getExternalInput(url) {
-		const options = {
+		const info = await youtubedl(url, this._ytdlOptions({
 			dumpSingleJson: true,
 			format: 'bestaudio[protocol^=http]/bestaudio',
-			noCheckCertificates: true,
-			noWarnings: true,
-		};
-		const info = await youtubedl(url, options);
+		}));
 		if (info?.url && /^https?$/.test(info.protocol || '')) {
 			return { url: info.url, headers: info.http_headers || {} };
 		}
 
-		const process = youtubedl.exec(url, {
+		// HLS/DASH-only sources are piped through yt-dlp instead
+		const subprocess = youtubedl.exec(url, this._ytdlOptions({
 			format: 'bestaudio',
 			output: '-',
 			quiet: true,
-			noCheckCertificates: true,
-		});
-		process.catch(() => null);
-		return process.stdout;
+		}));
+		subprocess.catch(() => null);
+		return subprocess.stdout;
 	}
 
 	_directTrack(data, requester) {
@@ -462,16 +740,18 @@ class Player {
 
 	_track(info, requester, extra = {}) {
 		const uri = info.webpage_url || info.original_url || info.url;
+		const live = info.is_live || ['is_live', 'is_upcoming', 'post_live'].includes(info.live_status);
 		return {
 			title: info.title || 'Unknown track',
 			author: info.uploader || info.channel || info.artist || 'Unknown artist',
 			duration: Math.round(number(info.duration) * 1000),
 			uri,
-			streamUrl: info.url || null,
+			// Stream URLs are resolved when the track starts, since they expire
+			streamUrl: null,
 			identifier: info.id || uri,
-			thumbnail: info.thumbnail || null,
+			thumbnail: this._thumbnail(info),
 			requester,
-			isSeekable: !info.is_live && !info.live_status,
+			isSeekable: !live,
 			...extra,
 		};
 	}
@@ -481,49 +761,121 @@ class Player {
 		if (!this.queue.current) this.queue.current = this.queue.shift();
 		if (!this.queue.current) return;
 
-		await this.connect();
+		try {
+			await this.connect();
+		} catch (error) {
+			this.manager.emit('trackError', this, this.queue.current, { error: `Couldn't join the voice channel: ${error.message}` });
+			return this.destroy();
+		}
 		this.stopRequested = false;
-		return this._start(this.queue.current, this.position);
+		return this._startOrSkip(this.queue.current, this.position);
+	}
+
+	// Starts a track, reporting the error and moving on to the next track if it can't be played
+	async _startOrSkip(track, offset = 0) {
+		try {
+			await this._start(track, offset);
+		} catch (error) {
+			if (this.destroyed || track !== this.queue.current) return;
+			this.manager.emit('trackError', this, track, { error: error.message || String(error) });
+			// Never repeat a track that just failed
+			this.stopRequested = true;
+			this._onIdle();
+		}
+	}
+
+	// Works out what FFmpeg should read for a track: a readable stream, or a URL with optional headers
+	async _resolveInput(track) {
+		if (track.getStream) return track.getStream();
+		if (track.streamUrl) return { url: track.streamUrl };
+		if (track.resolved && Date.now() - track.resolved.at < RESOLVED_TTL) return track.resolved;
+
+		const target = track.query ? await this._findOnYouTube(track) : track.uri;
+		const info = await youtubedl(target, this._ytdlOptions({
+			dumpSingleJson: true,
+			format: 'bestaudio/best',
+			noPlaylist: true,
+		}));
+		const media = info?.entries ? info.entries.find(Boolean) : info;
+		if (!media?.url) throw new Error(`No playable stream was found for ${track.title}.`);
+
+		if (!track.duration && media.duration) track.duration = Math.round(number(media.duration) * 1000);
+		track.resolved = { url: media.url, headers: media.http_headers || {}, at: Date.now() };
+		return track.resolved;
+	}
+
+	// Picks the YouTube upload that best matches a track from another service (Spotify, SoundCloud previews, saved playlists)
+	async _findOnYouTube(track) {
+		this._assertProviderEnabled('youtube');
+		if (track.youtubeUri) return track.youtubeUri;
+
+		const results = await youtubedl(`ytsearch5:${track.query}`, this._ytdlOptions({ dumpSingleJson: true, flatPlaylist: true }));
+		const candidates = (results?.entries || []).filter(Boolean).map(entry => ({
+			title: entry.title,
+			author: entry.uploader || entry.channel,
+			duration: Math.round(number(entry.duration) * 1000),
+			uri: entry.webpage_url || entry.url,
+		}));
+		if (!candidates.length) throw new Error(`Couldn't find ${track.title} on YouTube.`);
+
+		const title = normalizeTitle(track.title);
+		const closeDuration = candidate => !track.duration || !candidate.duration || Math.abs(candidate.duration - track.duration) < 15000;
+		const match = candidates.find(candidate => isExactTrackMatch(track, candidate) && closeDuration(candidate))
+			|| candidates.find(candidate => normalizeTitle(candidate.title).includes(title) && closeDuration(candidate))
+			|| candidates[0];
+
+		track.youtubeUri = match.uri;
+		return match.uri;
 	}
 
 	async _start(track, offset = 0) {
 		this.position = Math.max(0, number(offset));
-		const resolvedInput = track.getStream ? await track.getStream() : null;
+		const resolvedInput = await this._resolveInput(track);
+		if (this.destroyed || track !== this.queue.current) return;
+
 		const stream = resolvedInput && typeof resolvedInput.pipe === 'function' ? resolvedInput : null;
-		const streamUrl = resolvedInput && typeof resolvedInput === 'object' ? resolvedInput.url : resolvedInput;
-		const input = stream ? null : (typeof streamUrl === 'string' ? streamUrl : (track.streamUrl || await youtubedl(track.uri, {
-			getUrl: true,
-			format: 'bestaudio/best',
-			noWarnings: true,
-			noCallHome: true,
-			noPlaylist: true,
-		})));
+		const input = stream ? null : String(typeof resolvedInput === 'string' ? resolvedInput : resolvedInput?.url || '').trim();
+		if (!stream && !input) throw new Error(`No playable stream was found for ${track.title}.`);
+
 		const filters = this._ffmpegFilters();
 		const args = ['-hide_banner', '-loglevel', 'error'];
 
+		// Long HTTP streams (e.g. YouTube) can drop mid-track, so let FFmpeg reconnect
+		if (/^https?:/i.test(input || '')) args.push('-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5');
 		if (this.position) args.push('-ss', (this.position / 1000).toFixed(3));
 		const headers = resolvedInput?.headers;
 		if (!stream && headers && Object.keys(headers).length) {
 			args.push('-headers', Object.entries(headers).map(([name, value]) => `${name}: ${value}`).join('\r\n'));
 		}
-		args.push('-i', stream ? 'pipe:0' : String(input).trim(), '-vn');
+		args.push('-i', stream ? 'pipe:0' : input, '-vn');
 		if (filters.length) args.push('-af', filters.join(','));
 		args.push('-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1');
 
+		this._killProcess();
 		const ffmpeg = spawn(ffmpegPath, args, {
 			stdio: [stream ? 'pipe' : 'ignore', 'pipe', 'pipe'],
 			windowsHide: true,
 		});
+		this.process = ffmpeg;
 		if (stream) {
-			stream.once('error', error => this._onError(error));
+			stream.once('error', error => {
+				if (ffmpeg === this.process) this._onError(error);
+			});
+			// FFmpeg closing early (skip, seek) breaks the pipe - that's expected
+			ffmpeg.stdin.on('error', () => null);
 			stream.pipe(ffmpeg.stdin);
 		}
 		let details = '';
 		ffmpeg.stderr.on('data', data => {
-			details += data.toString();
+			details = (details + data.toString()).slice(-4096);
 		});
-		ffmpeg.once('error', error => this._onError(error));
+		ffmpeg.once('error', error => {
+			if (ffmpeg === this.process) this._onError(error);
+		});
 		ffmpeg.once('close', code => {
+			// Ignore processes that were replaced by a skip, seek or filter change
+			if (ffmpeg !== this.process) return;
+			this.process = null;
 			if (code && !this.stopRequested && details) {
 				this._onError(new Error(details.trim()));
 			}
@@ -536,6 +888,12 @@ class Player {
 		this.resource.volume.setVolume(this.volume / 100);
 		this.audioPlayer.play(this.resource);
 		this.manager.emit('trackStart', this, track);
+	}
+
+	_killProcess() {
+		const ffmpeg = this.process;
+		this.process = null;
+		if (ffmpeg && ffmpeg.exitCode === null) ffmpeg.kill();
 	}
 
 	_ffmpegFilters() {
@@ -569,15 +927,15 @@ class Player {
 		this.previousTracks.push(ended);
 		this.manager.emit('trackEnd', this, ended);
 
-		if (this.trackRepeat && !this.stopRequested) return this._start(ended);
+		this.position = 0;
+		this.startedAt = 0;
+		if (this.trackRepeat && !this.stopRequested) return this._startOrSkip(ended);
 		if (this.queueRepeat && !this.stopRequested) this.queue.push(ended);
 
 		this.queue.current = this.queue.shift() || null;
-		this.position = 0;
-		this.startedAt = 0;
 		if (this.queue.current) {
 			this.stopRequested = false;
-			return this._start(this.queue.current);
+			return this._startOrSkip(this.queue.current);
 		}
 
 		this.playing = false;
@@ -714,6 +1072,7 @@ class Player {
 		this.destroyed = true;
 		clearTimeout(this.timeout);
 		this.audioPlayer.stop(true);
+		this._killProcess();
 		this.connection?.destroy();
 		this.state = 'DISCONNECTED';
 		this.manager.players.delete(this.guild);
@@ -726,6 +1085,23 @@ class AudioManager extends EventEmitter {
 		super();
 		this.bot = bot;
 		this.players = new Map();
+	}
+
+	get musicConfig() {
+		return this.bot.config?.Music || {};
+	}
+
+	// Clients for the metadata services, built on first use so config edits apply after a reload
+	get songlink() {
+		return this._songlink ??= new SongLink(this.musicConfig.songlink);
+	}
+
+	get spotify() {
+		return this._spotify ??= new Spotify(this.musicConfig.spotify);
+	}
+
+	get tidal() {
+		return this._tidal ??= new Tidal(this.musicConfig.tidal);
 	}
 
 	init() {
@@ -746,27 +1122,37 @@ class AudioManager extends EventEmitter {
 		return player;
 	}
 
-	async search(query, requester) {
+	async search(query, requester, source) {
 		const player = new Player(this, {
 			guild: '',
 			voiceChannel: '',
 			textChannel: '',
 		});
-		const result = await player.search(query, requester);
+		const result = await player.search(query, requester, source);
 		player.audioPlayer.stop(true);
 		return result;
 	}
 }
 
-AudioManager.buildUnresolved = (data, requester) => ({
-	title: data.title || 'Unknown track',
-	author: data.author || 'Unknown artist',
-	duration: number(data.duration),
-	uri: `ytsearch1:${data.title || ''} ${data.author || ''}`,
-	identifier: data.identifier || data.title,
-			thumbnail: data.thumbnail || null,
-	requester,
-	isSeekable: true,
-});
+// Rebuilds a saved track (e.g. from a playlist). YouTube links play directly, anything else is found on YouTube again.
+AudioManager.buildUnresolved = (data, requester) => {
+	const title = data.title || 'Unknown track';
+	const author = data.author || 'Unknown artist';
+	const query = `${title} ${author}`;
+	const playable = isYouTubeUrl(data.uri);
+	return {
+		title,
+		author,
+		duration: number(data.duration),
+		uri: isUrl(data.uri) ? data.uri : `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`,
+		streamUrl: null,
+		identifier: data.identifier || title,
+		thumbnail: data.thumbnail || null,
+		requester,
+		isSeekable: data.isSeekable ?? true,
+		provider: data.provider || 'youtube',
+		query: playable ? undefined : query,
+	};
+};
 
 module.exports = AudioManager;

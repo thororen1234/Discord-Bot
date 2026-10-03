@@ -23,7 +23,8 @@ class QueueEnd extends Event {
 	 * @param {Track} track The track that just ended causing the queue to end aswell.
 	 * @readonly
 	*/
-	async run(bot, player, { identifier: videoID, requester }) {
+	async run(bot, player, track) {
+		const { requester } = track;
 		// Whether or not auto play is enabled
 		if (player.autoplay) {
 			// Search for track
@@ -31,11 +32,16 @@ class QueueEnd extends Event {
 			const guild = bot.guilds.cache.get(player.guild);
 			let res;
 			try {
-				res = await player.search(`https://www.youtube.com/watch?v=${videoID}&list=RD${videoID};`, requester);
+				const videoID = await this.getVideoID(player, track);
+				if (!videoID) throw new Error('Couldn\'t find a related song on YouTube.');
+				res = await player.search(`https://www.youtube.com/watch?v=${videoID}&list=RD${videoID}`, requester);
 				if (res.loadType === 'error') {
 					if (!player.queue.current) player.destroy();
 					throw res.exception;
 				}
+				// The mix starts with the song that just ended
+				res.tracks = res.tracks.filter(({ identifier }) => identifier !== videoID);
+				if (!res.tracks.length) res.loadType = 'empty';
 			} catch (err) {
 				return channel.error('music/play:ERROR', { ERROR: err.message });
 			}
@@ -87,6 +93,24 @@ class QueueEnd extends Event {
 				player.destroy();
 			}, 180000);
 		}
+	}
+
+	/**
+	 * Finds the YouTube video ID for a track, so a YouTube mix can be made from it.
+	 * @param {Player} player The player that's queue ended
+	 * @param {Track} track The track that ended
+	 * @returns {Promise<?string>}
+	*/
+	async getVideoID(player, track) {
+		const youtubeUri = [track.youtubeUri, track.uri].find(uri => /youtu\.?be/i.test(uri || ''));
+		if (youtubeUri) {
+			const match = youtubeUri.match(/(?:v=|youtu\.be\/|shorts\/)([\w-]{11})/);
+			if (match) return match[1];
+		}
+
+		// Tracks from other services (Tidal, SoundCloud, ...) need to be found on YouTube first
+		const res = await player.search(`${track.title} ${track.author}`, track.requester, 'youtube');
+		return res.tracks[0]?.identifier ?? null;
 	}
 }
 

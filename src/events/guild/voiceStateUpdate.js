@@ -83,6 +83,11 @@ class VoiceStateUpdate extends Event {
 		const player = bot.manager?.players.get(newState.guild.id);
 
 		if (!player) return;
+
+		// The bot was moved to another channel or disconnected by someone
+		if (newState.id == bot.user.id && oldState.channelId && oldState.channelId !== newState.channelId) {
+			return bot.manager.emit('playerMove', player, oldState.channelId, newState.channelId);
+		}
 		if (!newState.guild.members.cache.get(bot.user.id).voice.channelId) player.destroy();
 
 		// Check for stage channel audience change
